@@ -1,5 +1,5 @@
 import numpy as np
-from src.dynamixel import Dynamixel, OperatingMode, ReadAttribute
+from .dynamixel import Dynamixel, OperatingMode, ReadAttribute
 import time
 from dynamixel_sdk import GroupSyncRead, GroupSyncWrite, DXL_LOBYTE, DXL_HIBYTE, DXL_LOWORD, DXL_HIWORD
 from enum import Enum, auto
@@ -101,20 +101,6 @@ class Robot:
                           DXL_LOBYTE(DXL_HIWORD(action[i])),
                           DXL_HIBYTE(DXL_HIWORD(action[i]))]
             self.pos_writer.changeParam(motor_id, data_write)
-
-        self.pos_writer.txPacket()
-
-    def tmp_set_goal_pos(self, action):
-        if not self.motor_control_state is MotorControlType.POSITION_CONTROL:
-            self._set_position_control()
-        # for i, motor_id in enumerate(self.servo_ids):
-        # i = 1
-        motor_id = 2
-        data_write = [DXL_LOBYTE(DXL_LOWORD(action)),
-                        DXL_HIBYTE(DXL_LOWORD(action)),
-                        DXL_LOBYTE(DXL_HIWORD(action)),
-                        DXL_HIBYTE(DXL_HIWORD(action))]
-        self.pos_writer.changeParam(motor_id, data_write)
 
         self.pos_writer.txPacket()
 

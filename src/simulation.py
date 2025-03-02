@@ -12,7 +12,6 @@ class Simulation:
     p.connect(p.GUI)
     p.resetSimulation()
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
-    p.setAdditionalSearchPath(pybullet_data.getDataPath())
     p.setAdditionalSearchPath("/Users/alexander/Developer/Robot-Manipulator/")
     p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
     p.setGravity(0, 0, -9.81)
@@ -21,9 +20,20 @@ class Simulation:
 
     self.orientation = p.getQuaternionFromEuler([0, 0, 0])
     self.robot = p.loadURDF(
-        model_path,
+        fileName=model_path,
         useFixedBase=True,
-        globalScaling=0.01
+        globalScaling=0.0025
+    )
+    p.setAdditionalSearchPath(pybullet_data.getDataPath())
+    self.table = p.loadURDF(
+      "table/table.urdf",
+      basePosition=[0, 0, -0.62]
+    )
+    
+    self.block = p.loadURDF(
+      fileName="simulation/assets/cylinder.urdf",
+      basePosition=[0.1, 0.2, 0.2],
+      globalScaling=0.5
     )
 
     p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
@@ -85,21 +95,21 @@ class Simulation:
     if ord('q') in keys and keys[ord('q')] & p.KEY_WAS_TRIGGERED:
       p.disconnect()
     if ord('d') in keys and keys[ord('d')] & p.KEY_WAS_TRIGGERED:
-      self.a_delta += 0.1
+      self.a_delta += 0.05
     if ord('f') in keys and keys[ord('f')] & p.KEY_WAS_TRIGGERED:
-      self.a_delta -= 0.1
+      self.a_delta -= 0.05
+    if ord('m') in keys and keys[ord('m')] & p.KEY_WAS_TRIGGERED:
+      self.x_delta += 0.05
     if ord('n') in keys and keys[ord('n')] & p.KEY_WAS_TRIGGERED:
-      self.x_delta += 0.1
+      self.x_delta -= 0.05
     if ord('b') in keys and keys[ord('b')] & p.KEY_WAS_TRIGGERED:
-      self.x_delta -= 0.1
-    if ord('v') in keys and keys[ord('v')] & p.KEY_WAS_TRIGGERED:
-      self.y_delta += 0.1
+      self.y_delta += 0.05
     if ord('c') in keys and keys[ord('c')] & p.KEY_WAS_TRIGGERED:
-      self.y_delta -= 0.1
+      self.y_delta -= 0.05
     if ord('x') in keys and keys[ord('x')] & p.KEY_WAS_TRIGGERED:
-      self.z_delta += 0.1
+      self.z_delta += 0.05
     if ord('z') in keys and keys[ord('z')] & p.KEY_WAS_TRIGGERED:
-      self.z_delta -= 0.1
+      self.z_delta -= 0.05
     
     return [self.x_delta, self.y_delta, self.z_delta, self.a_delta]
 

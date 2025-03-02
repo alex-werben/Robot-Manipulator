@@ -7,25 +7,53 @@ from src.dynamixel import Dynamixel
 import numpy as np
 import time
 
-# p.connect(p.GUI)
-# p.resetSimulation()
-# p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
-# p.setAdditionalSearchPath(pybullet_data.getDataPath())
-# p.setAdditionalSearchPath("/Users/alexander/Developer/Robot-Manipulator/")
-# p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-# p.setGravity(0, 0, -10)
-# p.setPhysicsEngineParameter(solverResidualThreshold=0)
+
+from stable_baselines3 import A2C, PPO
+from stable_baselines3.common.monitor import Monitor
+from env import KochReachObject
+
+def _angle_to_pos(joint_angles):
+    positions = (((joint_angles + np.pi) / (2 * np.pi)) * 4096).astype(int)
+    positions[1] = -(positions[1] - 4096)
+    positions[4] = -(positions[4] - 4096) + 2048
+    return positions
 
 
-# # Generate panda, plane, other objects
-# orientation = p.getQuaternionFromEuler([0, 0, 0])
-# # panda
-# robot = p.loadURDF(
-#     "simulation/model/robot.urdf",
-#     useFixedBase=True,
-#     globalScaling=0.01
-# )
+def main():
+    env = KochReachObject("GUI")
+    model = A2C.load("model/best_model_cpp.zip", env=env)
+    follower_dynamixel = Dynamixel.Config(baudrate=1_000_000, device_name="/dev/tty.usbmodem58FA0959341").instantiate()
+    follower = Robot(follower_dynamixel, servo_ids=[1, 2, 3, 4, 5, 6])
 
+    new_joint_positions = _angle_to_pos(np.array(env._joint_positions))
+    follower.set_goal_pos(new_joint_positions)
+
+    obs, _ = env.reset()
+
+    for i in range(10000):
+        time.sleep(1. / 30.)
+        action, _ = model.predict(obs, deterministic=True)
+        try:
+            obs, reward, done, _, _ = env.step(action)
+        except p.error:
+            follower._disable_torque()
+            p.disconnect()  
+            return      
+
+        new_joint_positions = _angle_to_pos(np.array(env._joint_positions))
+        follower.set_goal_pos(new_joint_positions)
+
+        if done:
+            obs, _ = env.reset()
+            new_joint_positions = _angle_to_pos(np.array(env._joint_positions))
+            follower.set_goal_pos(new_joint_positions)
+
+    # follower._disable_torque()
+    # p.disconnect()
+
+
+main()
+# follower._disable_torque()
 # p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 # joint1 = p.addUserDebugParameter("joint1", -3.14, 3.14, 0)
 # joint2 = p.addUserDebugParameter("joint2", -3.14, 3.14, 0)
@@ -51,18 +79,3 @@ import time
 #         index = index + 1
         
 # ee_position = p.getLinkState(robot, ee_index)[0]
-
-
-follower_dynamixel = Dynamixel.Config(baudrate=1_000_000, device_name="/dev/tty.usbmodem58FA0959341").instantiate()
-follower = Robot(follower_dynamixel, servo_ids=[1, 2, 3, 4, 5, 6])
-
-s = Simulation()
-while True:
-    new_joint_positions = s.step()
-
-
-    follower.set_goal_pos(new_joint_positions)
-        
-follower._disable_torque()
-
-# p.disconnect()

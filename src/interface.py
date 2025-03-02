@@ -54,7 +54,7 @@ class SimulatedRobot:
         """
         return self.d.qvel
 
-    def read_ee_pos(self, joint_name='end_effector'):
+    def read_ee_pos(self, joint_name="joint6"):
         """
         :param joint_name: name of the end effector joint
         :return: numpy array of end effector position
@@ -62,7 +62,7 @@ class SimulatedRobot:
         joint_id = self.m.body(joint_name).id
         return self.d.geom_xpos[joint_id]
 
-    def inverse_kinematics(self, ee_target_pos, joint_name='end_effector'):
+    def inverse_kinematics(self, ee_target_pos, joint_name="joint6"):
         """
         :param ee_target_pos: numpy array of target end effector position
         :param joint_name: name of the end effector joint
@@ -75,7 +75,7 @@ class SimulatedRobot:
         mujoco.mj_jacBodyCom(self.m, self.d, jac, None, joint_id)
         # compute target joint velocities
         qpos = self.read_position()
-        qdot = np.dot(np.linalg.pinv(jac[:, :5]), ee_target_pos - ee_pos)
+        qdot = np.dot(np.linalg.pinv(jac[:, :6]), ee_target_pos - ee_pos)
         # apply the joint velocities
         q_target_pos = qpos + qdot * 0.2
         return q_target_pos

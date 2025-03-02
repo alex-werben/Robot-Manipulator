@@ -1,9 +1,16 @@
 from __future__ import annotations
 import math
 import os
-from dynamixel_sdk import *  # Uses Dynamixel SDK library
+# from dynamixel_sdk import *  # Uses Dynamixel SDK library
+
 from dataclasses import dataclass
 import enum
+from dynamixel_sdk import (
+    PortHandler,
+    PacketHandler,
+    COMM_SUCCESS,
+    time
+)
 
 
 class ReadAttribute(enum.Enum):
