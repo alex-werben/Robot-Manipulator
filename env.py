@@ -2,20 +2,14 @@ import math
 import os
 import time
 import numpy as np
-import gym
-from gym import spaces
+import gymnasium as gym
+from gymnasium import spaces
 import pybullet as p
 import pybullet_data
-import random
 from typing import List
 
-use_null_space = 1
-ik_solver = 0
-panda_end_effector_index = 11
-panda_num_dofs = 7
-
 MODE = p.GUI  # p.GUI or p.DIRECT - with or without rendering
-DIM_OBS = 8  # no. of dimensions in observation space
+DIM_OBS = 6  # no. of dimensions in observation space
 DIM_ACT = 4  # no. of dimensions in action space
 MAX_EPISODE_LEN = 500
 
@@ -27,58 +21,63 @@ class Environment(gym.Env):
         p.connect(MODE)
         self.reset()
 
-        self.action_space = spaces.Box(np.array([-1] * 4), np.array([1] * 4))
-        self.observation_space = spaces.Box(np.array([-1] * 5), np.array([1] * 5))
+        self.action_space = spaces.Box(np.array([-1] * DIM_ACT), np.array([1] * DIM_ACT))
+        self.observation_space = spaces.Box(np.array([-1] * DIM_OBS), np.array([1] * DIM_OBS))
 
     def reset(self, seed=23):
-        self.step_counter = 0
         p.resetSimulation()
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 0)
-        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        p.setAdditionalSearchPath("/Users/alexander/Developer/Robot-Manipulator/")
         p.configureDebugVisualizer(p.COV_ENABLE_GUI, 0)
-        p.setGravity(0, 0, -10)
+        p.setGravity(0, 0, -9.81)
         p.setPhysicsEngineParameter(solverResidualThreshold=0)
 
-        # Generate panda, plane, other objects
-        orientation = p.getQuaternionFromEuler([0, 0, 0])
-        # panda
-        self.panda = p.loadURDF("franka_panda/panda.urdf",
-                                useFixedBase=True,
-                                basePosition=[0, 0, 0],
-                                baseOrientation=orientation)
-        joint_positions = [0, 0, 0, -2.24, -0.30, 2.66, 2.32, 0.02, 0.02]
+        self.step_counter = 0        
+        self.orientation = p.getQuaternionFromEuler([0., 0., 0.])
+        # robot
+        self.robot = p.loadURDF(
+            "simulation/model/robot.urdf",
+            useFixedBase=True,
+            basePosition=[0, 0, 0],
+            globalScaling=0.0025,
+            baseOrientation=self.orientation
+        )
+        self.joint_num = p.getNumJoints(self.robot)
+        self.ee_index = self.joint_num - 1
+        
+        # TODO: fix here probably (3.14 -> 0), then it can be removed at all
+        joint_positions = [0, 0, 0, 0, 3.14, 0]
         index = 0
-        for j in range(p.getNumJoints(self.panda)):
-            p.changeDynamics(self.panda, j, linearDamping=0, angularDamping=0)
-            info = p.getJointInfo(self.panda, j)
+        for j in range(p.getNumJoints(self.robot)):
+            p.changeDynamics(self.robot, j, linearDamping=0, angularDamping=0)
+            info = p.getJointInfo(self.robot, j)
             joint_type = info[2]
             if joint_type == p.JOINT_PRISMATIC or joint_type == p.JOINT_REVOLUTE:
-                p.resetJointState(self.panda, j, joint_positions[index])
+                p.resetJointState(self.robot, j, joint_positions[index])
                 index = index + 1
 
-        # plane
-        self.plane = p.loadURDF("plane.urdf", basePosition=[0, 0, -0.5])
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
+        self.table = p.loadURDF(
+            "table/table.urdf",
+            basePosition=[0, 0, -0.62]
+        )
 
 
-        # surface, other objects
-        p.setAdditionalSearchPath(os.getcwd())
-        self.surface = p.loadURDF("assets/cube.urdf", basePosition=[0.25, 0, -0.25], useFixedBase=True)
-        # self.end_position = p.loadURDF("assets/position.urdf", basePosition=[0.6, 0.5, 0.025], useFixedBase=True)
-        # self.start_position = p.loadURDF("assets/position.urdf", basePosition=[0.6, -0.5, 0.025], useFixedBase=True)
-        # p.changeVisualShape(self.end_position, -1, rgbaColor=[0, 1, 0, 0.3])
-        # p.changeVisualShape(self.start_position, -1, rgbaColor=[1, 0, 0, 0.3])
-        # self.border = p.loadURDF("assets/border.urdf", basePosition=[0.25, 0, 0.025], useFixedBase=True)
-        # state_object = [random.uniform(0.3, 0.6), random.uniform(-0.4, 0.4), 0.05]
-        state_object = [0.4, 0.1, 0.05]
-        self.object = p.loadURDF("assets/block.urdf", basePosition=state_object)
-
+        self.object = p.loadURDF(
+            fileName="simulation/assets/cylinder.urdf",
+            basePosition=[0.5, 0.2, 0.2],
+            globalScaling=0.5
+        )
+        
         # Debug print axes
         p.addUserDebugText('X', [1, 0, 0], [0, 0, 0])
         p.addUserDebugText('Y', [0, 1, 0], [0, 0, 0])
 
-        state_robot = p.getLinkState(self.panda, panda_end_effector_index)[0]
-        state_fingers = (p.getJointState(self.panda, 9)[0], p.getJointState(self.panda, 10)[0])
-        observation = state_robot + state_fingers
+        state_robot = np.array(p.getLinkState(self.robot, self.ee_index)[0])
+        state_object = self._get_object_position()
+
+        observation = state_robot + state_object
+
         p.configureDebugVisualizer(p.COV_ENABLE_RENDERING, 1)
 
         return observation
@@ -87,60 +86,76 @@ class Environment(gym.Env):
         p.configureDebugVisualizer(p.COV_ENABLE_SINGLE_STEP_RENDERING)
 
         # Execute action
-        orientation = p.getQuaternionFromEuler([2 * math.pi / 2., 0, 0.])
         dv = 0.005
         dx = action[0] * dv
         dy = action[1] * dv
         dz = action[2] * dv
-        fingers = action[3]
+        ee_angle = action[3] * dv
 
-        current_position = p.getLinkState(self.panda, panda_end_effector_index)[0]
-        new_position = [current_position[0] + dx,
-                        current_position[1] + dy,
-                        current_position[2] + dz]
+        current_position = p.getLinkState(self.robot, self.ee_index)[0]
+        new_position = [
+            current_position[0] + dx,
+            current_position[1] + dy,
+            current_position[2] + dz
+        ]
 
-        joint_poses = p.calculateInverseKinematics(self.panda, panda_end_effector_index, new_position,
-                                                   orientation)[0:7]
+        joint_positions = p.calculateInverseKinematics(
+            self.robot,
+            self.ee_index,
+            new_position,
+            self.orientation
+        ) # TODO: check if it is correct to remove last joint from array
+        
+        p.setJointMotorControlArray(
+            self.robot, 
+            list(range(self.joint_num)),
+            p.POSITION_CONTROL,
+            joint_positions
+        )
 
-        p.setJointMotorControlArray(self.panda, list(range(7)) + [9, 10], p.POSITION_CONTROL,
-                                    list(joint_poses) + 2 * [fingers])
         p.stepSimulation()
         # time.sleep(1/ 240.)
 
-        # Calculate reward and observation
-        state_object = np.array(p.getBasePositionAndOrientation(self.object)[0])
-        state_robot = p.getLinkState(self.panda, panda_end_effector_index)[0]
-        state_fingers = (p.getJointState(self.panda, 9)[0], p.getJointState(self.panda, 10)[0])
+        state_object = self._get_object_position()
+        state_robot = p.getLinkState(self.robot, self.ee_index)[0]
+        reward = self._calculate_reward(state_robot, state_object)
 
-        # reward
-        done = False
-        tip = state_robot
-        obj = state_object
-        result = [abs(tip[i] - obj[i]) for i in range(len(tip))]
-        reward = -sum(result)
-        if state_object[2] > 0.45:
-            reward += 1
-            done = True
-        # End episode 
         self.step_counter += 1
-        if self.step_counter > MAX_EPISODE_LEN or reward > -0.09:
+        done = False
+        if self.step_counter > MAX_EPISODE_LEN or reward > -0.5:
             done = True
 
-        # TODO: Detect Collisions of Panda and Obstacle
-        # cost = 0
-        # contacts = p.getContactPoints(self.panda, self.obstacle1)
-        # if contacts:
-        #     print("Collision detected! ", "[", self.cost_counter, "]", end="\r")
-        #     self.cost_counter += 1
-        #     cost = 1
+        print("REWARD: ", reward)
 
-        # print("REWARD: ",reward)
-        # info = {'cost': cost}  #
-        info = state_object
+        info = {}
 
-        self.observation = state_robot + state_fingers  # + state_robot
+        observation = state_robot + state_object
 
-        return np.array(self.observation).astype(np.float32), reward, done, info
+        return observation, reward, done, info
+
+    def _calculate_reward(self, *args) -> float:
+        state_robot = args[0]
+        state_object = args[1]
+
+        distance = np.linalg.norm(state_object - state_robot)
+
+        reward = -distance
+
+        return reward
+
+    def _get_object_position(self):
+        """
+        Get the position of the object.
+        TODO: realize it with camera.
+
+        Returns
+        -------
+        state_object : array_like
+            The position of the object as a 3-element array.
+        """
+        state_object = np.array(p.getBasePositionAndOrientation(self.object)[0])
+
+        return state_object
 
     def render(self):
         view_matrix = p.computeViewMatrixFromYawPitchRoll(cameraTargetPosition=[0.7, 0, 0.8],
@@ -168,13 +183,13 @@ class Environment(gym.Env):
     def close(self):
         p.disconnect()
 
-# env = Environment()
-# env.reset()
-# # while (1):
-# for _ in range(100000):
-#     # env.render()
-#     action = env.action_space.sample()
-#     print(action)
-#     env.step(action)
-#     # env.step(1)
-# env.close()
+env = Environment()
+env.reset()
+# while (1):
+for _ in range(100000):
+    # env.render()
+    action = env.action_space.sample()
+    print(action)
+    env.step(action)
+    # env.step(1)
+env.close()
